@@ -1,23 +1,12 @@
 from django.urls import path
 from . import views
 
-app_name = 'cities_api'
+app_name = 'incidents_api'
 
 urlpatterns = [
     # Basic CRUD endpoints
-    path('', views.CityListCreateView.as_view(), name='city-list-create'),
-    path('<int:pk>/', views.CityDetailView.as_view(), name='city-detail'),
-
-    # Special format endpoints
-    path('geojson/', views.CityGeoJSONView.as_view(), name='city-geojson'),
-
-    # Spatial query endpoints
-    path('within-radius/', views.cities_within_radius, name='cities-within-radius'),
-    path('bbox/', views.cities_in_bounding_box, name='cities-bbox'),
-    path('geojson/', views.cities_geojson, name='cities-geojson'),
-
-    # Statistics and metadata
-    path('stats/', views.city_statistics, name='city-statistics'),
-    path('countries/', views.countries_list, name='countries-list'),
-    path('info/', views.api_info, name='api-info'),
+    path('', views.list_incidents, name='list_incidents'),
+    path('nearest/', views.nearest_incidents, name='nearest_incidents'),
+    path('alerts/', views.check_hazard_alerts, name='check_hazard_alerts'),
+    path('<int:incident_id>/upvote/', views.upvote_incident, name='upvote_incident'),
 ]

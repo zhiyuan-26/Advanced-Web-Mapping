@@ -1,10 +1,10 @@
-// Replace addMarkersToMap with clustered version
-// Store cities data and markers
 console.log('map.js loaded');
-let citiesData = [];
+
+let incidentsData = [];
 let markers = {};
-let cityCount = 0;
 let map = null;
+
+let searchMarker = null
 
 // API endpoint
 const API_URL = '/api/cities/';

@@ -68,29 +68,6 @@ class CityListCreateView(generics.ListCreateAPIView):
 
         return queryset
 
-class CityDetailView(generics.RetrieveUpdateDestroyAPIView):
-    """
-    Retrieve, update, or delete a city instance
-    """
-    queryset = City.objects.all()
-    serializer_class = CityDetailSerializer
-
-    def get_serializer_class(self):
-        """Use create serializer for updates"""
-        if self.request.method in ['PUT', 'PATCH']:
-            return CityCreateSerializer
-        return CityDetailSerializer
-
-class CityGeoJSONView(generics.ListAPIView):
-    """
-    Return cities as GeoJSON for mapping applications
-    """
-    queryset = City.objects.all()
-    serializer_class = CityGeoJSONSerializer
-    pagination_class = StandardResultsSetPagination
-    filter_backends = [DjangoFilterBackend, SearchFilter]
-    filterset_class = CityFilter
-    search_fields = ['name', 'country']
 
 
 @api_view(['GET'])
