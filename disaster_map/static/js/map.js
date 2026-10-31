@@ -4,15 +4,21 @@ let incidentsData = [];
 let markers = {};
 let map = null;
 
-let searchMarker = null
+let searchMarker = null;
+let radiusCircle = null;
+let proximityLayer;
+let heatLayer = null;
+
+const DUBLIN_COORDS = [53.3498, -6.2603];
+const DEFAULT_ZOOM = 6;
 
 // API endpoint
-const API_URL = '/api/cities/';
+const API_URL = '/api/incidents/';
 
 // Initialize the map
 async function initMap() {
     // Initialize Leaflet map centered on Dublin
-    map = L.map('map').setView([53.3498, -6.2603], 6);
+    map = L.map('map').setView(DUBLIN_COORDS, DEFAULT_ZOOM);
 
     // Add OpenStreetMap tile layer
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -21,7 +27,8 @@ async function initMap() {
         minZoom: 2
     }).addTo(map);
 
-    showLoading(true);
+    proximityLayer = L.layerGroup().addTo(map);
+
     try {
         // Fetch cities from API
         console.log('Fetching from:', API_URL);
@@ -35,170 +42,117 @@ async function initMap() {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
 
-        const data = await response.json();
-        console.log('Data received:', data);
-        citiesData = data.results || data;
-        cityCount = citiesData.length;
+        const incidentsData = await response.json();
+        console.log('Data received:', incidentsData);
 
-        // Update city count
-        document.getElementById('cityCount').textContent = cityCount;
-
-        // Add markers to map
-        addMarkersToMap(citiesData);
-        addHeatmapLayer(citiesData);
+        document.getElementById('cityCount').textContent = incidentsData.length;
+        renderIncidentMarkers(incidentsData);
+        renderHeatMap(incidentsData);
 
     } catch (error) {
-        console.error('Error fetching cities:', error);
-        console.error('Error details:', {
-            message: error.message,
-            stack: error.stack,
-            name: error.name
-        });
-        alert('Failed to load cities data. Check console for details.');
-    } finally {
-        showLoading(false);
-    }
+        console.error('Failed to load incidents:', error);
+        alert('Failed to load incidents data. Check console for details.');
+    } 
+
+    setupEventListeners();
 }
 
-// Add markers for each city
-function addMarkersToMap(cities) {
-    // Clear existing markers
-    Object.values(markers).forEach(marker => map.removeLayer(marker));
+function renderIncidentMarkers(incidents) {
+    Object.values(markers).forEach(m => map.removeLayer(m));
     markers = {};
 
-    cities.forEach(city => {
-        const lat = parseFloat(city.latitude);
-        const lng = parseFloat(city.longitude);
-
-        if (isNaN(lat) || isNaN(lng)) {
-            console.warn(`Invalid coordinates for ${city.name}`);
-            return;
-        }
+    incidents.forEach(inc => {
+        const colorMap = { low: '#28a745', medium: '#ffc107', high: '#fd7e14', critical: '#dc3545' };
 
         // Create marker
-        const marker = L.circleMarker([lat, lng], {
-            radius: 6,
-            fillColor: '#007bff',
-            color: '#0056b3',
-            weight: 2,
-            opacity: 1,
-            fillOpacity: 0.8
+        const marker = L.circleMarker([inc.latitude, inc.longitude], {
+            radius: 7,
+            fillColor: colorMap[inc.severity] || '#007bff',
+            color: '#000',
+            weight: 1,
+            fillOpacity: 0.9
         }).addTo(map);
 
-        // Add popup with city information
-        const popupContent = createPopupContent(city);
-        marker.bindPopup(popupContent);
+        marker.bindPopup(`
+            <div style="min-width: 100px;">
+                <h4 style="margin: 0 0 5px 0;">${inc.title}</h4>
+                <p style="margin:2px 0;"><strong>Category:</strong>${inc.category}</p>
+                <p style="margin:2px 0;"><strong>Severity:</strong><span style="text-transform: capitalize;">${inc.severity}</span></p>
+                <p style="margin:2px 0;"><strong>Upvotes:</strong><span id="upvote-count-${inc.id}">${inc.upvotes}</span></p>
+                <button onclick="upvoteIncident(${inc.id})" style="margin-top: 5px; padding: 4px 8px; cursor: pointer;">👍 Upvote</button>
+            </div>
+        `);
 
-        // Store reference
-        markers[city.id] = marker;
+        markers[inc.id] = marker;
     });
 }
 
-// Create HTML content for popup
-function createPopupContent(city) {
-    return `
-        <div class="city-popup">
-            <h3>${city.name}</h3>
-            <p><strong>Country:</strong> ${city.country}</p>
-            ${city.region ? `<p><strong>Region:</strong> ${city.region}</p>` : ''}
-            <p><strong>Population:</strong> ${formatNumber(city.population)}</p>
-            <p><strong>Coordinates:</strong> ${city.latitude.toFixed(4)}, ${city.longitude.toFixed(4)}</p>
-            ${city.founded_year ? `<p><strong>Founded:</strong> ${city.founded_year}</p>` : ''}
-            ${city.timezone ? `<p><strong>Timezone:</strong> ${city.timezone}</p>` : ''}
-        </div>
-    `;
+
+function renderHeatMap(incidents) {
+    if (heatLayer) map.removeLayer(heatLayer);
+
+    const heatData = incidents.map(inc => [inc.latitude, inc.longitude, 1]);
+    heatLayer = L.heatLayer(heatData, { raduis: 25, blur: 15, maxZoom: 10}).addTo(map);
 }
 
-// Format numbers with thousands separator
-function formatNumber(num) {
-    return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-}
+async function runSpatialAlertCheck(lat, lng) {
+    const radiusKm = 1.0;
+    clearProximityResults();
 
-// Search functionality
-function setupSearchListener() {
-    document.getElementById('searchInput').addEventListener('input', function(e) {
-        const query = e.target.value.toLowerCase();
-        const resultsDiv = document.getElementById('results');
+    try {
+        const res = await fetch('/api/incidents/alerts/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat, lng, radius_km: radiusKm })
+        });
+        const data = await res.json();
 
-        if (query.length === 0) {
-            resultsDiv.innerHTML = '';
-            addMarkersToMap(citiesData);
-            return;
-        }
+        searchMarker = L.marker([lat, lng]).addTo(map).bindPopup("Your Location").openPopup();
+        radiusCircle = L.circle([lat, lng], { radius: radiusKm * 1000, color: 'dc3545', fillOpacity: 0.1 }).addTo(map);
 
-        // Filter cities
-        const filtered = citiesData.filter(city => 
-            city.name.toLowerCase().includes(query) ||
-            city.country.toLowerCase().includes(query)
-        );
+        const results = document.getElementById('proximity-results');
+        results.innerHTML = `<strong>${data.total_alerts} Active Hazard Alerts nearby:</strong>`;
 
-        // Display results
-        if (filtered.length === 0) {
-            resultsDiv.innerHTML = '<p style="color: #999;">No cities found</p>';
-            // Clear markers
-            Object.values(markers).forEach(marker => map.removeLayer(marker));
-            markers = {};
-        } else {
-            // Show matching markers only
-            Object.values(markers).forEach(marker => map.removeLayer(marker));
-            markers = {};
-            addMarkersToMap(filtered);
-
-            // Update results list
-            resultsDiv.innerHTML = filtered.map(city => `
-                <div style="padding: 8px; border-bottom: 1px solid #eee; cursor: pointer;" onclick="goToCity(${city.id})">
-                    <strong>${city.name}</strong>, ${city.country}
-                </div>
-            `).join('');
-        }
-    });
-}
-
-// Navigate to city on map
-function goToCity(cityId) {
-    const city = citiesData.find(c => c.id === cityId);
-    if (city) {
-        map.setView([city.latitude, city.longitude], 10);
-        if (markers[cityId]) {
-            markers[cityId].openPopup();
-        }
+        const list = document.createElement('ol');
+        data.incidents.forEach(inc => {
+            const item = document.createElement('li');
+            item.textContent = `${inc.title} (${inc.severity}) - ${inc.distance_km} km away`;
+            item.onclick = () => map.setView([inc.coordinates.lat, inc.coordinates.lng], 12);
+            list.append(item);
+        });
+        results.append(list);
+    } catch (err) {
+        console.error('Alert query error:', err);
     }
 }
 
-// Reset map view
-function setupResetListener() {
-    document.getElementById('resetBtn').addEventListener('click', function() {
-        map.setView([53.3498, -6.2603], 6);
-        document.getElementById('searchInput').value = '';
-        document.getElementById('results').innerHTML = '';
-        addMarkersToMap(citiesData);
+async function upvoteIncident(incidentId) {
+    try {
+        const res = await fetch(`/api/incidents/${incidentId}/upvote/`, { method: 'POST' });
+        const data = await res.json():
+        const el = documet.getElementById(`upvote-count-${incidentId}`);
+        if (el) el.textContent = data.upvotes;
+    } catch (err) {
+        console.error('Upvote failed', err);
+    }
+}
+
+function clearProximityResults() {
+    if (searchMarker) map.removeLayer(searchMarker);
+    if (radiusCircle) map.removeLayer(radiusCircle);
+    searchMarker = radiusCircle = null;
+    document.getElementById('proximity-results').innerHTML = '';
+}
+
+function setupEventListener() {
+    document.getElementById('resetBtn').addEventListener('click', () => {
+        map.setView(DUBLIN_COORDS, DEFAULT_ZOOM, { animate: false });
+        clearProximityResults();
+    });
+
+    map.on('click' (e) => {
+        runSpatialAlertCheck(e.latlng.lat, e.latlng.lng);
     });
 }
 
-// Show/hide loading indicator
-function showLoading(show) {
-    document.getElementById('loading').style.display = show ? 'block' : 'none';
-}
-
-// Initialize map on page load
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, initializing map...');
-    initMap();
-    setupSearchListener();
-    setupResetListener();
-});
-
-function addHeatmapLayer(cities) {
-    const heatData = cities.map(city => [
-        parseFloat(city.latitude),
-        parseFloat(city.longitude),
-        0.8  // Intensity
-    ]);
-
-    L.heatLayer(heatData, {
-        radius: 25,
-        blur: 15,
-        maxZoom: 1,
-        minOpacity: 0.2
-    }).addTo(map);
-}
+document.addEventListener('DOMContentLoaded', initMap);
