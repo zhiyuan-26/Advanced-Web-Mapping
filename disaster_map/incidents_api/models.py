@@ -8,7 +8,7 @@ class Incident(models.Model):
         ("critical", "Critical"),
     ]
 
-    title - models.CharField(max_length=120)
+    title = models.CharField(max_length=120)
     category = models.CharField(max_length=50)
     description = models.TextField(blank=True, null=True)
     severity = models.CharField(max_length=10, choices=SEVERITY_CHOICES, default="medium")

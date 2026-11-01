@@ -129,7 +129,7 @@ async function runSpatialAlertCheck(lat, lng) {
 async function upvoteIncident(incidentId) {
     try {
         const res = await fetch(`/api/incidents/${incidentId}/upvote/`, { method: 'POST' });
-        const data = await res.json():
+        const data = await res.json();
         const el = documet.getElementById(`upvote-count-${incidentId}`);
         if (el) el.textContent = data.upvotes;
     } catch (err) {

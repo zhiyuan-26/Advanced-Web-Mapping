@@ -12,63 +12,8 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
 import json
 
-
 from .models import Incident
 from .serializers import IncidentListSerializer, DistanceSerializer
-
-
-from .models import City
-from .serializers import (
-    CityListSerializer, CityDetailSerializer, CityGeoJSONSerializer,
-    CityCreateSerializer, CitySummarySerializer, DistanceSerializer,
-    BoundingBoxSerializer
-)
-from .filters import CityFilter
-
-class StandardResultsSetPagination(PageNumberPagination):
-    """Custom pagination class"""
-    page_size = 20
-    page_size_query_param = 'page_size'
-    max_page_size = 100
-
-class CityListCreateView(generics.ListCreateAPIView):
-    """
-    List all cities or create a new city
-    """
-    queryset = City.objects.all()
-    pagination_class = StandardResultsSetPagination
-    filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_class = CityFilter
-    search_fields = ['name', 'country', 'region']
-    ordering_fields = ['name', 'country', 'population', 'founded_year']
-    ordering = ['-population']  # Default ordering
-
-    def get_serializer_class(self):
-        """Use different serializers for list vs create"""
-        if self.request.method == 'POST':
-            return CityCreateSerializer
-        return CityListSerializer
-
-    def get_queryset(self):
-        """Optionally filter queryset based on query parameters"""
-        queryset = City.objects.all()
-
-        # Additional custom filters
-        min_population = self.request.query_params.get('min_population')
-        if min_population:
-            try:
-                min_pop = int(min_population)
-                queryset = queryset.filter(population__gte=min_pop)
-            except ValueError:
-                pass
-
-        capitals_only = self.request.query_params.get('capitals_only')
-        if capitals_only and capitals_only.lower() == 'true':
-            queryset = queryset.filter(is_capital=True)
-
-        return queryset
-
-
 
 @api_view(['GET'])
 def list_incidents(request):
