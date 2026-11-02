@@ -49,17 +49,16 @@ def list_boundaries(request):
     features = []
 
     for bound in boundaries:
-        features.append({
-            "type": "Feature",
-            "geomerty": {
-                "type": "MultiPolygon",
-                "coordinates": bound.mpoly.coords
-            },
-            "properties": {
-                "id": bound.id,
-                "name": bound.name
-            }
-        })
+        if bound.mpoly:
+            geojson_geom = json.loads(bound.mpoly.geojson)
+            features.append({
+                "type": "Feature",
+                "geometry": geojson_geom,
+                "properties": {
+                    "id": bound.id,
+                    "name": bound.name
+                }
+            })
 
     return Response({"type": "FeatureCollection", "features": features})
 

@@ -69,6 +69,16 @@
         position: relative;
         z-index: 10070 !important;
     }
+
+    .leaflet-pane path {
+        pointer-events: auto !important;
+        stroke-linecap: round !important;
+        stroke-linejoin: round !important;
+    }
+
+    .leaflet-interactive {
+        cursor: pointer;
+    }
 </style>
 {% endblock %}
 
@@ -214,7 +224,7 @@
 <!-- Modal for reporting a new hazard -->
  <div class="modal fade" id="reportModal" tabindex="-1" aria-labelledby="reportModalLabel" aria-hidden="true">
     <div class="modal-dialog">
-        <div class="model-content">
+        <div class="modal-content">
             <div class="modal-header bg-danger text-white">
                 <h5 class="modal-title fw-bold" id="reportModalLabel">Report Community Hazard</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -247,8 +257,12 @@
                         <label class="form-label font-weight-bold">Coordinates (Lat / Lng)</label>
                         <div class="row">
                             <div class="col-6">
-                                <input type="number" step="any" id="hazardLat" placeholder="Latitude" required>
-                                <input type="number" step="any" id="hazardLng" placeholder="Longitude" required>
+                                <label for="hazardLat" class="form-label fw-bold">Latitude</label>
+                                <input type="number" step="any" class="form-control" id="hazardLat" placeholder="Latitude" required>
+                            </div>
+                            <div class="col-6">
+                                <label for="hazardLng" class="form-label fw-bold">Longitude</label>
+                                <input type="number" step="any" class="form-control" id="hazardLng" placeholder="Longitude" required>
                             </div>
                         </div>
                         <div>
@@ -271,7 +285,7 @@
 
     <script>
         const DUBLIN_COORDS = [53.3498, -6.2603];
-        const DEFAULT_ZOOM = 15;
+        const DEFAULT_ZOOM = 7;
 
         console.log('🎯 Dashboard Incident Map loading...');
 
@@ -356,7 +370,7 @@
                 // Create marker
                 const marker = L.circleMarker([lat, lng], {
                     radius: 8,
-                    fillColor: getSeverityColor,
+                    fillColor: getSeverityColor(inc.severity),
                     color: '#000000',
                     weight: 1,
                     fillOpacity: 0.9
@@ -397,9 +411,17 @@
         async function loadHazardZones() {
             try {
                 const res = await fetch('/api/incidents/boundaries/');
-                if (!res.ok) return;
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
                 const data = await res.json();
-                currentHazardZones = Array.isArray(data) ? data : (data.features || []);
+
+                if (data && data.type === 'FeatureCollection') {
+                    currentHazardZones = data.features || [];
+                } else if (Array.isArray(data)) {
+                    currentHazardZones = data;
+                } else if (data.features) {
+                    currentHazardZones = data.features;
+                }
 
                 renderHazardZones(currentHazardZones);
             } catch (error) {
@@ -411,31 +433,60 @@
         function renderHazardZones(zones) {
             hazardZonesLayer.clearLayers();
 
-            const showZones = document.getElementById('show-hazard-zones')?.checked;
-            if (!showZones) return;
+            const checkbox = document.getElementById('show-hazard-zones');
+            const showZones = checkbox ? checkbox.checked : true;
+            
+            if (!showZones || !zones || zones.length === 0) return;
 
-            zones.forEach(zone => {
-                if (zone.geometry) {
-                    const geoJsonLayer = L.geoJSON(zone, {
-                        style: {
-                            color: '#dc3545',
-                            weight: 2,
-                            fillColor: '#e74c3c',
-                            fillOpacity: 0.35,
-                            dashArray: '4, 4',
-                        },
-                        onEachFeature: (feature, layer) => {
-                            layer.bindPopup(`
-                                <div style="min-width: 150px;">
-                                    <h6 class="text-danger fw-bold mb-1">⚠️ Hazard Risk Zone</h6>
-                                    <strong>${faeture.properties?.name || 'Active Risk Area'}</strong>
-                                </div>
-                            `);
-                        }
-                    });
-                    hazardZonesLayer.addLayer(geoJsonLayer);
+            map.invalidateSize();
+
+            // Wrap the array back into a valid GeoJSON FeatureCollection
+            const featureCollection = {
+                type: 'FeatureCollection',
+                features: zones.map(z => z.type === 'Feature' ? z : {
+                    type: 'Feature',
+                    geometry: z.geometry,
+                    properties: z.properties || { name: z.name || 'Hazard Risk Area' }
+                })
+            };
+
+            try {
+                const geoJsonLayer = L.geoJSON(featureCollection, {
+                    style: function() {
+                        return {
+                            color: '#ff0000',      // Solid Red border
+                            weight: 4,             // Thicker line weight
+                            opacity: 1.0,          // Fully opaque stroke
+                            fillColor: '#ff0000',  // Solid Red fill
+                            fillOpacity: 0.5       // 50% opacity
+                        };
+                    },
+                    onEachFeature: (feature, layer) => {
+                        layer.bindPopup(`
+                            <div style="min-width: 160px;">
+                                <h6 class="text-danger fw-bold mb-1">⚠️ Hazard Risk Zone</h6>
+                                <strong>${feature.properties?.name || 'Active Risk Area'}</strong>
+                            </div>
+                        `);
+                    }
+                });
+
+                hazardZonesLayer.addLayer(geoJsonLayer);
+
+                // Ensure layer is attached to the map
+                if (!map.hasLayer(hazardZonesLayer)) {
+                    map.addLayer(hazardZonesLayer);
                 }
-            });
+
+                // Bring polygon layer to the front so base tiles or heatmaps don't cover it
+                hazardZonesLayer.eachLayer(l => {
+                    if (l.bringToFront) l.bringToFront();
+                });
+
+                console.log("✅ Hazard polygons successfully rendered to Leaflet layer.");
+            } catch (err) {
+                console.error('❌ Error rendering hazard zone polygons:', err);
+            }
         }
 
         // Spatial radius alert query
@@ -576,11 +627,9 @@
             document.getElementById('clear-filters')?.addEventListener('click', () => {
                 document.getElementById('category-filter').value = '';
                 document.getElementById('severity-filter').value = '';
-                document.getElementById('radius-input').value = '1.0';
+                document.getElementById('radius-input').value = '1.5';
                 clearProximityResults();
                 document.getElementById('proximity-results').innerHTML = '<p class="text-muted mb-0">Click anywhere on the map to trigger a spatial hazard alert search.</p>';
-                if (cat) filters.category = cat;
-                if (sev) filters.severity = sev;
                 loadIncidents({});
             });
 
