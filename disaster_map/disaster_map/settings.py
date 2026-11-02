@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.gis',
+    'django.contrib.humanize',
 
     # Third party apps
     'rest_framework',
@@ -38,6 +39,7 @@ INSTALLED_APPS = [
 
     # Your apps
     'incidents_api',
+    'dashboard',
 ]
 
 MIDDLEWARE = [
@@ -91,7 +93,7 @@ ROOT_URLCONF = 'disaster_map.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [BASE_DIR / 'templates'],
+        'DIRS': [],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

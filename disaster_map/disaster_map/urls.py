@@ -6,7 +6,7 @@ from django.conf.urls.static import static
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', TemplateView.as_view(template_name='index.html'), name='home'),  # Root redirect
+    path('', include('dashboard.urls')),  # Root redirect
     path('api/incidents/', include('incidents_api.urls')),
 ]
 

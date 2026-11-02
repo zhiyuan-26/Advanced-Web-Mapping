@@ -1,0 +1,466 @@
+<!-- dashboard/templates/dashboard/index.html -->
+{% extends 'dashboard/base.html' %}
+
+{% block title %}Dashboard - Community Safety & Hazard Map{% endblock %}
+
+{% block head_extra %}
+<!-- Custom Dashboard CSS -->
+<style>
+    #map { height: 600px; }
+    .control-panel {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    .filter-section {
+        border: 1px solid #dee2e6;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 15px;
+    }
+    .layer-toggle {
+        margin: 5px 0;
+    }
+    .stats-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        margin-bottom: 15px;
+    }
+    .export-btn {
+        margin: 5px;
+    }
+    .loading {
+        display: none;
+        text-align: center;
+        padding: 20px;
+    }
+    .feature-info {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        background: rgba(255,255,255,0.9);
+        padding: 10px;
+        border-radius: 5px;
+        display: none;
+        max-width: 300px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-3">
+        <div class="row">
+            <!-- Control Panel -->
+            <div class="col-md-3">
+                <div class="control-panel">
+                    <h5>📊 Hazard Overview</h5>
+                    <div class="stats-card">
+                        <h6>Total Active Incidents: <span id="total-incidents">0</span></h6>
+                        <h6>Critial Hazards: <span id="critical-count">0</span></h6>
+                    </div>
+
+                    <!-- Layer Controls -->
+                    <div class="filter-section">
+                        <h6>🗺️ Map Layers</h6>
+                        <div class="layer-toggle">
+                            <input type="checkbox" id="show-incidents" checked>
+                            <label for="show-incidents">Show Incident Markers</label>
+                        </div>
+                        <div class="layer-toggle">
+                            <input type="checkbox" id="show-heatmap" checked>
+                            <label for="show-heatmap">Show Severity Heatmap</label>
+                        </div>
+                    </div>
+
+                    <!-- Incident Filters -->
+                    <div class="filter-section">
+                        <h6>🚨 Incident Filters</h6>
+                        <div class="mb-2">
+                            <label class="form-label">Category</label>
+                            <select id="category-filter" class="form-select form-select-sm">
+                                <option value="">All Categories</option>
+                                <option value="Flooding">Flooding</option>
+                                <option value="Fallen Tree">Fallen Tree</option>
+                                <option value="Road Hazard">Road Hazard</option>
+                                <option value="Power Outage">Power Outage</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Severity Level</label>
+                            <select id="severity-filter" class="form-select form-select-sm">
+                                <option value="">All Severities</option>
+                                <option value="low">Low</option>
+                                <option value="medium">Medium</option>
+                                <option value="high">High</option>
+                                <option value="critical">Critical</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Alert Radius (km)</label>
+                            <input type="number" id="radius-input" class="form-control form-control-sm" value="1.5" min="0.1" max="20000" step="0.1">
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div class="d-grid gap-2">
+                        <button id="apply-filters" class="btn btn-primary">Apply Filters</button>
+                        <button id="clear-filters" class="btn btn-outline-secondary">Clear All</button>
+                    </div>
+
+                    <!-- Export Options -->
+                    <div class="filter-section">
+                        <h6>📥 Export Data</h6>
+                        <button id="export-incidents" class="btn btn-outline-success export-btn w-100 mb-2">Incidents JSON</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Container -->
+            <div class="col-md-9">
+                <div class="position-relative">
+                    <div id="map"></div>
+                    <div class="loading" id="loading">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <p>Loading incident data...</p>
+                    </div>
+                    <div class="feature-info" id="feature-info">
+                        <!-- Feature details will be displayed here -->
+                    </div>
+                </div>
+
+                <!-- Proximity Results Panel -->
+                <div class="mt-3">
+                    <div class="card">
+                        <div class="card-header bg-dark text-white font-weight-bold">
+                            📍 Nearby Hazard Alerts & Spatial Results
+                        </div>
+                        <div class="card-body">
+                            <div id="proximity-results">
+                                <p class="text-muted mb-0">Click anywhere on the map to trigger a spatial hazard alert search.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Summary Cards -->
+                <div class="mt-3">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <h5 class="card-title">Incidents Displayed</h5>
+                                    <h3 class="text-danger" id="incidents-count">0</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <h5 class="card-title">Comunity Upvotes</h5>
+                                    <h3 class="text-primary" id="total-upvotes">0</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-body text-center">
+                                    <h5 class="card-title">Current Search Radius</h5>
+                                    <h3 class="text-info" id="active-radius">1.0 km</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Leaflet Heat JS -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+
+    <script>
+        const DUBLIN_COORDS = [53.3498, -6.2603];
+        const DEFAULT_ZOOM = 15;
+
+        console.log('🎯 Dashboard Incident Map loading...');
+
+        // Handle browser extension errors
+        window.addEventListener('error', function(e) {
+            if (e.message && e.message.includes('message channel closed')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        window.addEventListener('unhandledrejection', function(e) {
+            if (e.reason && e.reason.message && e.reason.message.includes('message channel closed')) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Initialize Leaflet map centered on Dublin
+        console.log('🗺️ Initializing map...');
+        const map = L.map('map').setView(DUBLIN_COORDS, DEFAULT_ZOOM);
+
+        const cartoLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 20,
+            minZoom: 2
+        }).addTo(map);
+
+        console.log('✅ Map tiles loaded');
+
+        let incidentsLayer = L.layerGroup().addTo(map);
+        let searchMarker = null;
+        let radiusCircle = null;
+        let heatLayer = null;
+
+        let currentIncidents = [];
+
+        // Severity colors
+        function getSeverityColor(severity) {
+            const colorMap = {
+                low: '#28a745', 
+                medium: '#ffc107', 
+                high: '#fd7e14', 
+                critical: '#dc3545' 
+            };
+            return colorMap[severity] || '#007bff';
+        }
+
+        // Utility functions
+        function showLoading(show) {
+            const loading = document.getElementById('loading');
+            if (loading) loading.style.display = show ? 'block' : 'none';
+        }
+        
+        // Load incidents from Backend API
+        async function loadIncidents(filters = {}) {
+            showLoading(true);
+            console.log(' Loading incidents with filters:', filters);
+
+            try {
+                const params = new URLSearchParams(filters);
+                const url = `/api/incidents/?${params}`;
+                console.log('🔗 Fetching:', url);
+                const response = await fetch(url);
+                if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+                const data = await response.json();
+                console.log(' Incidents response:', data);
+
+                currentIncidents = Array.isArray(data) ? data : (data.results || []);
+
+                displayIncidents(currentIncidents);
+                renderHeatMap(currentIncidents)
+                updateResultsSummary();
+            } catch (error) {
+                console.error(' Error loading incidents:', error);
+                currentIncidents = [];
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        // Display functions
+        function displayIncidents(incidents) {
+            console.log(' Displaying incidents:', incidents.length);
+            incidentsLayer.clearLayers();
+
+            let displayed = 0;
+
+            incidents.forEach(inc => {
+                const lat = parseFloat(inc.latitude);
+                const lng = parseFloat(inc.longitude);
+                if (isNaN(lat) || isNaN(lng)) return;
+
+                // Create marker
+                const marker = L.circleMarker([lat, lng], {
+                    radius: 8,
+                    fillColor: getSeverityColor,
+                    color: '#000000',
+                    weight: 1,
+                    fillOpacity: 0.9
+                }).addTo(map);
+
+                marker.bindPopup(`
+                    <div style="min-width: 100px;">
+                        <h4 style="margin: 0 0 5px 0;">${inc.title}</h4>
+                        <p style="margin:2px 0;"><strong>Category:</strong>${inc.category}</p>
+                        <p style="margin:2px 0;"><strong>Severity:</strong><span style="text-transform: capitalize;">${inc.severity}</span></p>
+                        <p style="margin:2px 0;"><strong>Upvotes:</strong><span id="upvote-count-${inc.id}">${inc.upvotes}</span></p>
+                        <button onclick="upvoteIncident(${inc.id})" style="margin-top: 5px; padding: 4px 8px; cursor: pointer;">👍 Upvote</button>
+                    </div>
+                `);
+
+                incidentsLayer.addLayer(marker);
+                displayed++;
+            });
+
+            console.log(` Successfully displayed ${displayed} incidents`);
+        }
+
+        // Render Heatmap Layer
+        function renderHeatMap(incidents) {
+            if (heatLayer) map.removeLayer(heatLayer);
+
+            const showHeatmap = document.getElementById('show-heatmap')?.checked;
+            if (!showHeatmap) return;
+
+            const heatData = incidents
+                .map(inc => [inc.latitude, inc.longitude, 1])
+                .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+
+            heatLayer = L.heatLayer(heatData, { radius: 25, blur: 15, maxZoom: 10}).addTo(map);
+        }
+
+        // Spatial radius alert query
+        async function runSpatialAlertCheck(lat, lng) {
+            const radiusInput = document.getElementById('radius-input');
+            let radiusKm = radiusInput ? parseFloat(radiusInput.value) : 1.5;
+            if (!Number.isFinite(radiusKm) || radiusKm <= 0) radiusKm = 1.0;
+
+            clearProximityResults();
+
+            try {
+                const res = await fetch('/api/incidents/alerts/', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lat, lng, radius_km: radiusKm })
+                });
+
+                if (!res.ok) throw new Error(`Status ${res.status}`);
+                const data = await res.json();
+
+                searchMarker = L.marker([lat, lng]).addTo(map).bindPopup("Your Search Location").openPopup();
+                radiusCircle = L.circle([lat, lng], { 
+                    radius: radiusKm * 1500, 
+                    color: '#dc3545', 
+                    fillColor: '#dc3545',
+                    fillOpacity: 0.1 
+                }).addTo(map);
+
+                map.fitBounds(radiusCircle.getBounds(), { padding: [30, 30], animate: true });
+
+                const results = document.getElementById('proximity-results');
+                if (results) {
+                    const alerts = data.incidents || [];
+                    results.innerHTML = `<h6>Found <strong>${alerts.length}</strong> active hazards within ${radiusKm} km:</h6>`;
+
+                    if (alerts.length === 0) {
+                        results.innerHTML += `<p class="text-muted">No active hazards detected in this radius zone.</p>`;
+                        return;
+                    }
+
+                    const list = document.createElement('ol');
+                    list.className = "mb-0 pl-3";
+
+                    alerts.forEach(inc => {
+                        const item = document.createElement('li');
+                        item.style.cssText = "cursor: pointer; color: #007bff; margin-botton: 4px";
+                        item.textContent = `${inc.title} (${inc.severity}) - ${inc.distance_km} km away`;
+
+                        const targetLat = inc.latitude ?? inc.coordinates?.lat;
+                        const targetLng = inc.longitude ?? inc.coordinates?.lng;
+                        
+                        item.onclick = () => map.setView([inc.latitude, inc.longitude], 12, { animate: true });
+                        list.append(item);
+                    });
+                    results.append(list);
+                }
+            } catch (err) {
+                console.error('Alert query error:', err);
+            }
+        }
+
+        // Upvote handler
+        async function upvoteIncident(incidentId) {
+            try {
+                const res = await fetch(`/api/incidents/${incidentId}/upvote/`, { method: 'POST' });
+                const data = await res.json();
+                const el = document.getElementById(`upvote-count-${incidentId}`);
+                if (el) el.textContent = data.upvotes;
+            } catch (err) {
+                console.error('Upvote failed', err);
+            }
+        }
+
+        function clearProximityResults() {
+            if (searchMarker) map.removeLayer(searchMarker);
+            if (radiusCircle) map.removeLayer(radiusCircle);
+            searchMarker = radiusCircle = null;
+        }
+
+        // Update summary
+        function updateResultsSummary() {
+            console.log(' Updating summary...');
+
+            const incidentCount = currentIncidents.length;
+            const critical = currentIncidents.filter(i => i.severity === 'critical').length;
+            const upvotes = currentIncidents.reduce((sum, i) => sum + (i.upvotes || 0), 0);
+            const radius = document.getElementById('radius-input')?.value || '1.0';
+
+            document.getElementById('total-incidents').textContent = incidentCount;
+            document.getElementById('incidents-count').textContent = incidentCount;
+            document.getElementById('critical-count').textContent = critical;
+            document.getElementById('total-upvotes').textContent = upvotes;
+            document.getElementById('active-radius').textContent = `${radius} km`;
+        }
+
+        // Initialize when DOM is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('📄 DOM ready, setting up dashboard...');
+
+            loadIncidents({});
+            
+            map.on('click', (e) => {
+                runSpatialAlertCheck(e.latlng.lat, e.latlng.lng);
+            });
+
+            document.getElementById('apply-filters')?.addEventListener('click', () => {
+                const filters = {};
+                const cat = document.getElementById('category-filter')?.value;
+                const sev = document.getElementById('severity-filter')?.value;
+                
+                if (cat) filters.category = cat;
+                if (sev) filters.severity = sev;
+
+                loadIncidents(filters);
+            })
+            
+            document.getElementById('clear-filters')?.addEventListener('click', () => {
+                document.getElementById('category-filter').value = '';
+                document.getElementById('severity-filter').value = '';
+                document.getElementById('radius-input').value = '1.0';
+                clearProximityResults();
+                document.getElementById('proximity-results').innerHTML = '<p class="text-muted mb-0">Click anywhere on the map to trigger a spatial hazard alert search.</p>';
+                if (cat) filters.category = cat;
+                if (sev) filters.severity = sev;
+                loadIncidents({});
+            });
+
+            document.getElementById('show-incidents')?.addEventListener('change', (e) => {
+                if (e.target.checked) map.addLayer(incidentsLayer);
+                else map.removeLayer(incidentsLayer);
+            });
+
+            document.getElementById('show-heatmap')?.addEventListener('change', () => {
+                renderHeatMap(currentIncidents);
+            });
+        });
+
+        console.log(' Dashboard script loaded');
+    </script>
+{% endblock %}
