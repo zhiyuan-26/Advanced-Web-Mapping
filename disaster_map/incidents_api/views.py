@@ -1,3 +1,4 @@
+import json
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import generics, status
@@ -10,9 +11,8 @@ from django.db.models import Q
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
-import json
 
-from .models import Incident
+from .models import Incident, MunicipalBoundary
 from .serializers import IncidentListSerializer, DistanceSerializer
 
 @api_view(['GET'])
@@ -36,18 +36,24 @@ def nearest_incidents(request):
     data = serializer.validated_data
     user_point = Point(data['lng'], data['lat'], srid=4326)
 
-    incidents = Incident.objects.filter(status='open').annotate(
+    incidents = Incident.objects.filter(
+        status='open', 
+        location__isnull=False
+    ).annotate(
         distance=Distance("location", user_point)
     ).order_by("distance")[:10]
 
     return Response({
         'search_point': {'lat': data['lat'], 'lng': data['lng']},
-        'total_found': incidents.count(),
+        'total_found': len(incidents),
         'nearest_incidents': IncidentListSerializer(incidents, many=True).data
     })
 
 @api_view(['POST'])
 def check_hazard_alerts(request):
+    """
+    Return incidents within radius of user's point
+    """
     serializer = DistanceSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -55,14 +61,13 @@ def check_hazard_alerts(request):
     data = serializer.validated_data
     user_point = Point(data['lng'], data['lat'], srid=4326)
 
-    # Spatial query: within 1km radius OR inside active Hazard Polygon
+    # Spatial query: within 10 km radius OR inside active Hazard Polygon
     alerts = Incident.objects.filter(
-        status='open'
-    ).filter(
-        Q(location__distance_lte=(user_point, D(km=data['radius_km']))) |
-        Q(impact_zone__contains=user_point)
+        status='open',
+        location__isnull=False,
+        location__distance_lte=(user_point, D(km=data['radius_km']))
     ).annotate(
-        distace=Distance('location', user_point)
+        distance=Distance('location', user_point)
     ).order_by('distance')
 
     return Response({

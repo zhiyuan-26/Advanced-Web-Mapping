@@ -37,7 +37,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
 
     # Your apps
-    'incidents_api',  # From Week 1
+    'incidents_api',
 ]
 
 MIDDLEWARE = [

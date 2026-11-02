@@ -9,19 +9,18 @@ class IncidentListSerializer(serializers.ModelSerializer):
     latitude = serializers.ReadOnlyField()
     longitude = serializers.ReadOnlyField()
     distance_km = serializers.SerializerMethodField()
-    population_category = serializers.ReadOnlyField()
 
     class Meta:
         model = Incident
         fields = [
             'id', 'title', 'category', 'description',
-            'severity', 'status', 'upvotes', 'image', 
-            'latitude', 'longitude', 'distance_km', 'created_at'
+            'severity', 'status', 'upvotes', 'latitude',
+            'longitude', 'distance_km', 'created_at'
         ]
 
     def get_distance_km(self, obj):
         if hasattr(obj, 'distance') and obj.distance:
-            return round(obj.distance_km, 2)
+            return round(obj.distance.km, 2)
         return 0.0
 
 class IncidentCreateSerializer(serializers.ModelSerializer):
@@ -33,7 +32,7 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
         model = Incident
         fields = [
             'id', 'title', 'category', 'description',
-            'severity', 'status', 'image', 
+            'severity', 'status',
             'latitude', 'longitude'
         ]
 
@@ -51,10 +50,13 @@ class IncidentCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """Create incident with Point geometry from lat/lng"""
-
         lat = validated_data.pop('latitude')
         lng = validated_data.pop('longitude')
+
+        validated_data['latitude'] = lat
+        validated_data['longitude'] = lng
         validated_data['location'] = Point(lng, lat, srid=4326)
+
         return super().create(validated_data)
 
 class DistanceSerializer(serializers.Serializer):
