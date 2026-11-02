@@ -48,6 +48,27 @@
         display: none;
         max-width: 300px;
     }
+
+    .modal {
+        z-index: 10050 !important;
+    }
+
+    .modal-backdrop {
+        z-index: 10040 !important;
+    }
+
+    .modal-dialog {
+        z-index: 10060 !important;
+        pointer-events: auto !important;
+    }
+
+    .modal-content input, 
+    .modal-content select, 
+    .modal-content button {
+        pointer-events: auto !important;
+        position: relative;
+        z-index: 10070 !important;
+    }
 </style>
 {% endblock %}
 
@@ -63,6 +84,11 @@
                         <h6>Critial Hazards: <span id="critical-count">0</span></h6>
                     </div>
 
+                    <!-- Report Button -->
+                    <button id="openReportModalBtn" class="btn btn-danger w-100 mb-3 fw-bold" data-bs-toggle="modal" data-bs-target="#reportModal">
+                        + Report New Hazard
+                    </button>
+
                     <!-- Layer Controls -->
                     <div class="filter-section">
                         <h6>🗺️ Map Layers</h6>
@@ -74,13 +100,17 @@
                             <input type="checkbox" id="show-heatmap" checked>
                             <label for="show-heatmap">Show Severity Heatmap</label>
                         </div>
+                        <div class="layer-toggle">
+                            <input type="checkbox" id="show-hazard-zones" checked>
+                            <label for="show-hazard-zones" class="fw-bold text-danger">Show Hazard Risk Zones</label>
+                        </div>
                     </div>
 
                     <!-- Incident Filters -->
                     <div class="filter-section">
                         <h6>🚨 Incident Filters</h6>
                         <div class="mb-2">
-                            <label class="form-label">Category</label>
+                            <label class="form-label" for="category-filter">Category</label>
                             <select id="category-filter" class="form-select form-select-sm">
                                 <option value="">All Categories</option>
                                 <option value="Flooding">Flooding</option>
@@ -90,7 +120,7 @@
                             </select>
                         </div>
                         <div class="mb-2">
-                            <label class="form-label">Severity Level</label>
+                            <label class="form-label" for="severity-filter">Severity Level</label>
                             <select id="severity-filter" class="form-select form-select-sm">
                                 <option value="">All Severities</option>
                                 <option value="low">Low</option>
@@ -180,6 +210,56 @@
         </div>
     </div>
 </div>
+
+<!-- Modal for reporting a new hazard -->
+ <div class="modal fade" id="reportModal" tabindex="-1" aria-labelledby="reportModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="model-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title fw-bold" id="reportModalLabel">Report Community Hazard</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="incidentForm">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="hazardTitle" class="form-label font-weight-bold">Title / Description</label>
+                        <input type="text" class="form-control" id="hazardTitle" required placeholder="e.g. Flooded Roadway">
+                    </div>
+                    <div class="mb-3">
+                        <label for="hazardCategory" class="form-label font-weight-bold">Category</label>
+                        <select class="form-select" id="hazardCategory">
+                            <option value="Flooding">Flooding</option>
+                            <option value="Fallen Tree">Fallen Tree</option>
+                            <option value="Road Hazard">Road Hazard</option>
+                            <option value="Power Outage">Power Outage</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="hazardSeverity" class="form-label font-weight-bold">Severity Level</label>
+                        <select class="form-select" id="hazardSeverity">
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label font-weight-bold">Coordinates (Lat / Lng)</label>
+                        <div class="row">
+                            <div class="col-6">
+                                <input type="number" step="any" id="hazardLat" placeholder="Latitude" required>
+                                <input type="number" step="any" id="hazardLng" placeholder="Longitude" required>
+                            </div>
+                        </div>
+                        <div>
+                            <button type="submit">Submit Report</button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+ </div>
 {% endblock %}
 
 {% block scripts %}
@@ -195,21 +275,6 @@
 
         console.log('🎯 Dashboard Incident Map loading...');
 
-        // Handle browser extension errors
-        window.addEventListener('error', function(e) {
-            if (e.message && e.message.includes('message channel closed')) {
-                e.preventDefault();
-                return false;
-            }
-        });
-
-        window.addEventListener('unhandledrejection', function(e) {
-            if (e.reason && e.reason.message && e.reason.message.includes('message channel closed')) {
-                e.preventDefault();
-                return false;
-            }
-        });
-
         // Initialize Leaflet map centered on Dublin
         console.log('🗺️ Initializing map...');
         const map = L.map('map').setView(DUBLIN_COORDS, DEFAULT_ZOOM);
@@ -223,11 +288,13 @@
         console.log('✅ Map tiles loaded');
 
         let incidentsLayer = L.layerGroup().addTo(map);
+        let hazardZonesLayer = L.layerGroup().addTo(map);
         let searchMarker = null;
         let radiusCircle = null;
         let heatLayer = null;
 
         let currentIncidents = [];
+        let currentHazardZones = [];
 
         // Severity colors
         function getSeverityColor(severity) {
@@ -324,6 +391,51 @@
                 .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
 
             heatLayer = L.heatLayer(heatData, { radius: 25, blur: 15, maxZoom: 10}).addTo(map);
+        }
+
+        // Load municipal boundaries / hazard zones (polygons)
+        async function loadHazardZones() {
+            try {
+                const res = await fetch('/api/incidents/boundaries/');
+                if (!res.ok) return;
+                const data = await res.json();
+                currentHazardZones = Array.isArray(data) ? data : (data.features || []);
+
+                renderHazardZones(currentHazardZones);
+            } catch (error) {
+                console.warn('Could not load hazard zones:', error);
+            }
+        }
+
+        // Render hazard risk polygons on map
+        function renderHazardZones(zones) {
+            hazardZonesLayer.clearLayers();
+
+            const showZones = document.getElementById('show-hazard-zones')?.checked;
+            if (!showZones) return;
+
+            zones.forEach(zone => {
+                if (zone.geometry) {
+                    const geoJsonLayer = L.geoJSON(zone, {
+                        style: {
+                            color: '#dc3545',
+                            weight: 2,
+                            fillColor: '#e74c3c',
+                            fillOpacity: 0.35,
+                            dashArray: '4, 4',
+                        },
+                        onEachFeature: (feature, layer) => {
+                            layer.bindPopup(`
+                                <div style="min-width: 150px;">
+                                    <h6 class="text-danger fw-bold mb-1">⚠️ Hazard Risk Zone</h6>
+                                    <strong>${faeture.properties?.name || 'Active Risk Area'}</strong>
+                                </div>
+                            `);
+                        }
+                    });
+                    hazardZonesLayer.addLayer(geoJsonLayer);
+                }
+            });
         }
 
         // Spatial radius alert query
@@ -424,11 +536,32 @@
             console.log('📄 DOM ready, setting up dashboard...');
 
             loadIncidents({});
+            loadHazardZones();
             
+            const modalEl = document.getElementById('reportModal');
+            if (modalEl) {
+                modalEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                });
+            }
+
             map.on('click', (e) => {
+                if (modalEl && modalEl.classList.contains('show')) {
+                    return;
+                }
+
+                const lat = e.latlng.lat.toFixed(6);
+                const lng = e.latlng.lng.toFixed(6);
+
+                const latInput = document.getElementById('hazardLat');
+                const lngInput = document.getElementById('hazardLng');
+                if (latInput) latInput.value = lat;
+                if (lngInput) lngInput.value = lng;
+
                 runSpatialAlertCheck(e.latlng.lat, e.latlng.lng);
             });
 
+            // Filter handlers
             document.getElementById('apply-filters')?.addEventListener('click', () => {
                 const filters = {};
                 const cat = document.getElementById('category-filter')?.value;
@@ -451,6 +584,7 @@
                 loadIncidents({});
             });
 
+            // Layer toggles
             document.getElementById('show-incidents')?.addEventListener('change', (e) => {
                 if (e.target.checked) map.addLayer(incidentsLayer);
                 else map.removeLayer(incidentsLayer);
@@ -459,6 +593,51 @@
             document.getElementById('show-heatmap')?.addEventListener('change', () => {
                 renderHeatMap(currentIncidents);
             });
+
+            document.getElementById('show-hazard-zones')?.addEventListener('change', () => {
+                renderHazardZones(currentHazardZones);
+            });
+
+            // Submit new hazard report form
+            const form = document.getElementById('incidentForm');
+            if (form) {
+                form.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const payload = {
+                        title: document.getElementById('hazardTitle').value,
+                        category: document.getElementById('hazardCategory').value,
+                        severity: document.getElementById('hazardSeverity').value,
+                        latitude: parseFloat(document.getElementById('hazardLat').value),
+                        longitude: parseFloat(document.getElementById('hazardLng').value)
+                    };
+
+                    try {
+                        const res = await fetch('/api/incidents/', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (res.ok) {
+                            const newInc = await res.json();
+                            currentIncidents.push(newInc);
+                            displayIncidents(currentIncidents);
+                            renderHeatMap(currentIncidents);
+                            updateResultsSummary();
+
+                            if (modalEl) {
+                                const modalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                                modalInstance.hide();
+                            }
+                            form.reset();
+                        } else {
+                            alert('Failed to report hazard. Please verify your inputs.');
+                        }
+                    } catch (error) {
+                        console.error('Error submitting hazard:', error);
+                    }
+                });
+            }
         });
 
         console.log(' Dashboard script loaded');

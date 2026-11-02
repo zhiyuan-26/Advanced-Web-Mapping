@@ -9,4 +9,5 @@ urlpatterns = [
     path('nearest/', views.nearest_incidents, name='nearest_incidents'),
     path('alerts/', views.check_hazard_alerts, name='check_hazard_alerts'),
     path('<int:incident_id>/upvote/', views.upvote_incident, name='upvote_incident'),
+    path('boundaries/', views.list_boundaries, name='list_boundaries'),
 ]

@@ -13,16 +13,55 @@ from rest_framework.filters import SearchFilter, OrderingFilter
 from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Incident, MunicipalBoundary
-from .serializers import IncidentListSerializer, DistanceSerializer
+from .serializers import IncidentListSerializer, IncidentCreateSerializer, DistanceSerializer
 
-@api_view(['GET'])
+@api_view(['GET', 'POST'])
 def list_incidents(request):
     """
     Return list of incidents
     """
-    incidents = Incident.objects.filter(status='open')
-    serializer = IncidentListSerializer(incidents, many=True)
-    return Response(serializer.data)
+    if request.method == 'GET':
+        incidents = Incident.objects.filter(status='open')
+        category = request.GET.get('category')
+        severity = request.GET.get('severity')
+
+        if category:
+            incidents = incidents.filter(category__iexact=category)
+        if severity:
+            incidents = incidents.filter(severity__iexact=severity)
+
+        serializer = IncidentListSerializer(incidents, many=True)
+        return Response(serializer.data)
+
+    elif request.method == 'POST':
+        serializer = IncidentCreateSerializer(data=request.data)
+        if serializer.is_valid():
+            incident = serializer.save()
+            return Response(IncidentListSerializer(incident).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['GET'])
+def list_boundaries(request):
+    """
+    Return hazard risk zones as GeoJSON objects
+    """
+    boundaries = MunicipalBoundary.objects.all()
+    features = []
+
+    for bound in boundaries:
+        features.append({
+            "type": "Feature",
+            "geomerty": {
+                "type": "MultiPolygon",
+                "coordinates": bound.mpoly.coords
+            },
+            "properties": {
+                "id": bound.id,
+                "name": bound.name
+            }
+        })
+
+    return Response({"type": "FeatureCollection", "features": features})
 
 @api_view(['POST'])
 def nearest_incidents(request):
