@@ -30,9 +30,6 @@
         border-radius: 10px;
         margin-bottom: 15px;
     }
-    .export-btn {
-        margin: 5px;
-    }
     .loading {
         display: none;
         text-align: center;
@@ -141,7 +138,7 @@
                         </div>
                         <div class="mb-2">
                             <label class="form-label">Alert Radius (km)</label>
-                            <input type="number" id="radius-input" class="form-control form-control-sm" value="1.5" min="0.1" max="20000" step="0.1">
+                            <input type="number" id="radius-input" class="form-control form-control-sm" value="1" min="0.1" max="20000" step="0.1">
                         </div>
                     </div>
 
@@ -149,12 +146,6 @@
                     <div class="d-grid gap-2">
                         <button id="apply-filters" class="btn btn-primary">Apply Filters</button>
                         <button id="clear-filters" class="btn btn-outline-secondary">Clear All</button>
-                    </div>
-
-                    <!-- Export Options -->
-                    <div class="filter-section">
-                        <h6>📥 Export Data</h6>
-                        <button id="export-incidents" class="btn btn-outline-success export-btn w-100 mb-2">Incidents JSON</button>
                     </div>
                 </div>
             </div>
@@ -492,7 +483,7 @@
         // Spatial radius alert query
         async function runSpatialAlertCheck(lat, lng) {
             const radiusInput = document.getElementById('radius-input');
-            let radiusKm = radiusInput ? parseFloat(radiusInput.value) : 1.5;
+            let radiusKm = radiusInput ? parseFloat(radiusInput.value) : 1;
             if (!Number.isFinite(radiusKm) || radiusKm <= 0) radiusKm = 1.0;
 
             clearProximityResults();
@@ -509,7 +500,7 @@
 
                 searchMarker = L.marker([lat, lng]).addTo(map).bindPopup("Your Search Location").openPopup();
                 radiusCircle = L.circle([lat, lng], { 
-                    radius: radiusKm * 1500, 
+                    radius: radiusKm * 1000, 
                     color: '#dc3545', 
                     fillColor: '#dc3545',
                     fillOpacity: 0.1 
@@ -627,7 +618,7 @@
             document.getElementById('clear-filters')?.addEventListener('click', () => {
                 document.getElementById('category-filter').value = '';
                 document.getElementById('severity-filter').value = '';
-                document.getElementById('radius-input').value = '1.5';
+                document.getElementById('radius-input').value = '1';
                 clearProximityResults();
                 document.getElementById('proximity-results').innerHTML = '<p class="text-muted mb-0">Click anywhere on the map to trigger a spatial hazard alert search.</p>';
                 loadIncidents({});
