@@ -22,14 +22,6 @@ class Command(BaseCommand):
         # Seed Real Multi-Vertex Hazard Polygons
         hazard_zones = [
             {
-                "name": "Shannon River Catchment Flood Risk Zone",
-                "coords": [
-                    (-8.65, 52.65), (-8.50, 52.80), (-8.15, 53.00), 
-                    (-7.90, 53.40), (-7.95, 53.70), (-8.25, 53.80), 
-                    (-8.50, 53.40), (-8.80, 52.90), (-8.65, 52.65)
-                ]
-            },
-            {
                 "name": "Dublin Metropolitan Storm Risk Zone",
                 "coords": [
                     (-6.38, 53.28), (-6.15, 53.28), (-6.12, 53.42), 

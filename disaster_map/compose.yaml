@@ -32,7 +32,7 @@ services:
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
+      - "0.0.0.0:8000:8000"
     environment:
       DATABASE_NAME: ${POSTGRES_DB}
       DATABASE_USER: ${POSTGRES_USER}
